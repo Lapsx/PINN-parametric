@@ -297,11 +297,6 @@ Primeira etapa de um projeto de mestrado em andamento. Os resultados aqui são *
 ainda não foram submetidos a banca de qualificação ou defesa**. O código e as figuras são
 publicados para que a física possa ser conferida e discutida.
 
-## Licença
-
-*(a definir — ver sugestão no fim deste arquivo)*
-
----
 ---
 
 <div align="center">
