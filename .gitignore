@@ -1,0 +1,35 @@
+# ─── Python ───
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# ─── Pesos e checkpoints ───
+# Os checkpoints intermediários são grandes e não acrescentam nada a quem lê.
+# O modelo final pode ser publicado em Releases, ou versionado com:
+#     git add -f model/unified_pinn_v32_model.pt
+*_checkpoint_*.pt
+*.pth
+model/*.pt
+
+# ─── Saídas de execução ───
+*.log
+training_history_*.json
+
+# ─── Material interno da dissertação ───
+# Rascunhos de argumentação, roteiros para a banca e parágrafos sugeridos para o
+# texto. São material de trabalho, não documentação do repositório.
+argumento_*.md
+validacao_PINN_vs_*.md
+Fundamentos_e_Metodologia.md
+Metodologia_*.md
+guia_*.md
+*_improvements.md
+analise_*_relatorio.md
+notas/
+rascunhos/
+
+# ─── Sistema ───
+.DS_Store
+Thumbs.db
