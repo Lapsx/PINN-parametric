@@ -133,6 +133,48 @@ uma variação de carga — que nenhum dos outros dois métodos entrega diretame
 
 ---
 
+## A solução é contínua e diferenciável — e é isso que se ganha
+
+A linha final da tabela acima merece uma figura própria, porque é o argumento central do método.
+
+Um solver numérico devolve **um número por condição**. Se você quiser saber o quanto a energia de
+ligação muda quando a carga da superfície varia um pouco, precisa resolver duas vezes e subtrair —
+e o resultado herda o ruído das duas soluções. Se quiser a segunda derivada, o problema piora.
+
+A rede devolve uma **função**. As derivadas saem exatas, por diferenciação automática, no mesmo
+instante e em qualquer ponto do plano.
+
+<div align="center">
+  <img src="images/analise_derivadas_completa_v32.png" width="100%" alt="Análise de derivadas: excesso superficial, suscetibilidade e pressão osmótica">
+</div>
+
+Nenhuma dessas seis grandezas foi ajustada contra dados. Todas saem da **mesma rede treinada**,
+por `torch.autograd`:
+
+| painel | grandeza | o que significa |
+|---|---|---|
+| superior esq. | $\Gamma = \int\phi^2\,du$ | **excesso superficial** — quanto polímero há de fato grudado. É o parâmetro de ordem da transição |
+| superior centro | $\partial^2\mu/\partial\delta^2$ | **suscetibilidade termodinâmica** — o quanto o sistema *responde* a uma variação de carga |
+| superior dir. | $\Pi = -\partial\mu/\partial(\kappa a)$ | **pressão osmótica efetiva** — a força que a cadeia exerce sobre a superfície ao ser confinada |
+| inferior esq. | $\Gamma$ vs $\delta$ | os cortes verticais: a transição vista de perto, para sete tamanhos de esfera |
+| inferior centro | picos de $\lvert\partial^2\mu/\partial\delta^2\rvert$ | a suscetibilidade **pica na transição**, como manda a termodinâmica — e o pico do PINN (▽) fica perto do $\delta_c$ da WKB (linhas pontilhadas) |
+| inferior dir. | $\partial\mu/\partial\delta$ | a sensibilidade de primeira ordem |
+
+O painel inferior central é o mais informativo. Numa transição de fase contínua, a segunda
+derivada da energia livre diverge no ponto crítico. É exatamente o que aparece: cada curva sobe
+abruptamente do piso, atinge um máximo e decai. **A rede não foi instruída a produzir esse pico** —
+ele emerge da solução da equação diferencial. E a posição dele, medida de forma independente,
+concorda com a fronteira prevista pela teoria.
+
+> **Uma armadilha que custou uma reescrita.** A primeira versão desta análise avaliava a rede num
+> ponto radial que dependia de $\kappa a$. Como o autograd rastreia toda a cadeia de dependências,
+> isso criava um caminho espúrio de gradiente que cancelava parcialmente o legítimo, e a pressão
+> osmótica saía artificialmente próxima de zero. A correção é avaliar num ponto fixo e desacoplado.
+> É o tipo de erro que não aparece como exceção nem como número absurdo — só como um resultado
+> silenciosamente errado.
+
+---
+
 ## Os perfis de densidade
 
 <div align="center">
@@ -216,6 +258,37 @@ duas de amplitude — passa a ser **analítica**, e a rede só precisa aprender 
 
 ---
 
+## Próxima etapa: superfícies heterogêneas (em desenvolvimento)
+
+Tudo acima supõe uma esfera com carga **uniforme**. Proteínas reais não são assim — elas têm
+regiões positivas e negativas na mesma superfície, e a cadeia responde a esse padrão, não só à
+carga total.
+
+A segunda etapa do projeto troca a PINN por um **Fourier Neural Operator** e o potencial radial
+por uma expansão em multipolos (monopolo, dipolo, quadrupolo…), resolvendo em 2D:
+
+<div align="center">
+  <img src="images/fno_thermodynamics_smooth.png" width="100%" alt="FNO em potencial dipolar: potencial, nuvem polimérica e suscetibilidade não-local">
+</div>
+
+À esquerda, um potencial dipolar: metade da esfera atrai (azul), metade repele (vermelho). No
+centro, onde o polímero se acumula — repare que ele contorna o lado repulsivo. À direita, a
+**suscetibilidade não-local** $\delta\phi(\mathbf{r})/\delta V(\mathbf{r}_0)$: se você perturbar
+o potencial no ponto marcado pela estrela, como a densidade responde em *todo* o resto do espaço.
+Roxo é depleção, verde é acúmulo.
+
+Essa última é uma derivada funcional — a resposta de um campo inteiro à perturbação num ponto — e
+sai, de novo, por diferenciação automática. É a mesma ideia da seção anterior, agora em duas
+dimensões e sem simetria radial.
+
+> ⚠️ **Esta etapa ainda não está validada.** O dataset atual (1.000 amostras para um espaço de
+> parâmetros de ~50 dimensões) é pequeno demais para o modelo distinguir bem as ordens
+> multipolares, e o treino é puramente orientado a dados, sem resíduo da PDE nem conservação de
+> massa. As figuras acima demonstram a **capacidade** do método, não um resultado quantitativo.
+> Os números de $\delta_c$ desta etapa não são reportáveis, e por isso não estão aqui.
+
+---
+
 ## Limitações
 
 Um texto que só enumera vantagens convida à desconfiança. As que valem constar:
@@ -273,14 +346,31 @@ Os pesos não estão versionados aqui por padrão — veja o `.gitignore`.
 
 ```
 scripts/
-  unified_pinn_edwards_v32.py   modelo atual: rede, física, treino e validação
-  unified_pinn_edwards_v31.py   versão anterior, mantida para comparação
-  plot_phase_map_v31.py         varredura do domínio paramétrico
+  unified_pinn_edwards_v32.py     modelo atual: rede, física, treino e validação
+  unified_pinn_edwards_v31.py     versão anterior, mantida para comparação
+  pinn_derivatives_analysis_v2.py derivadas por autograd: Γ, suscetibilidade, pressão osmótica
+  pinn_loader.py                  carrega os pesos e calcula o excesso superficial Γ
+  plot_phase_map_v31.py           varredura do domínio paramétrico
+  fno/                            segunda etapa, superfícies heterogêneas (em desenvolvimento)
+    fno_architecture.py           Fourier Neural Operator 2D
+    generate_multipole_potentials.py  potenciais de Debye-Hückel + harmônicos esféricos
+    solve_edwards_2d.py           estado fundamental 2D, referência numérica
+    train_fno_large.py            treino do operador
+    fno_thermodynamics.py         suscetibilidade não-local por autograd
 images/
-  phase_map_v32.png             energia de ligação no plano (δ, κa)
-  critical_adsorption_v32.png   curva crítica δ_c: rede contra WKB
-  hf_pinn_ka_1.0_v32.png        perfis de densidade contra a referência
-  training_loss_v32.png         evolução da loss
+  phase_map_v32.png               energia de ligação no plano (δ, κa)
+  critical_adsorption_v32.png     curva crítica δ_c: rede contra WKB
+  hf_pinn_ka_1.0_v32.png          perfis de densidade contra a referência
+  analise_derivadas_completa_v32.png  as seis grandezas derivadas da mesma rede
+  fno_thermodynamics_smooth.png   FNO num potencial dipolar (etapa em desenvolvimento)
+  training_loss_v32.png           evolução da loss
+```
+
+As figuras das derivadas são regeneradas com:
+
+```bash
+cd scripts
+python pinn_derivatives_analysis_v2.py    # exige unified_pinn_v32_model.pt no diretório
 ```
 
 ---
@@ -427,6 +517,49 @@ to a change in charge — which neither of the other two methods delivers direct
 
 ---
 
+## The solution is continuous and differentiable — and that is the payoff
+
+The last row of the table above deserves its own figure, because it is the method's central
+argument.
+
+A numerical solver returns **one number per condition**. If you want to know how much the binding
+energy changes when surface charge shifts slightly, you must solve twice and subtract — and the
+result inherits the noise of both solutions. For the second derivative it gets worse.
+
+The network returns a **function**. Derivatives come out exactly, by automatic differentiation, in
+the same instant and at any point of the plane.
+
+<div align="center">
+  <img src="images/analise_derivadas_completa_v32.png" width="100%" alt="Derivative analysis: surface excess, susceptibility and osmotic pressure">
+</div>
+
+None of these six quantities was fit against data. All come from the **same trained network**, via
+`torch.autograd`:
+
+| panel | quantity | what it means |
+|---|---|---|
+| top left | $\Gamma = \int\phi^2\,du$ | **surface excess** — how much polymer is actually stuck. The transition's order parameter |
+| top center | $\partial^2\mu/\partial\delta^2$ | **thermodynamic susceptibility** — how strongly the system *responds* to a change in charge |
+| top right | $\Pi = -\partial\mu/\partial(\kappa a)$ | **effective osmotic pressure** — the force the chain exerts on the surface as it is confined |
+| bottom left | $\Gamma$ vs $\delta$ | vertical cuts: the transition up close, for seven sphere sizes |
+| bottom center | peaks of $\lvert\partial^2\mu/\partial\delta^2\rvert$ | susceptibility **peaks at the transition**, as thermodynamics requires — and the PINN peak (▽) lands near WKB's $\delta_c$ (dotted lines) |
+| bottom right | $\partial\mu/\partial\delta$ | first-order sensitivity |
+
+The bottom-center panel is the most informative. In a continuous phase transition the second
+derivative of the free energy diverges at the critical point. That is exactly what appears: each
+curve rises abruptly from the floor, reaches a maximum, and decays. **The network was never told to
+produce that peak** — it emerges from solving the differential equation. And its position,
+measured independently, agrees with the boundary predicted by theory.
+
+> **A trap that cost a rewrite.** The first version of this analysis evaluated the network at a
+> radial point that depended on $\kappa a$. Since autograd tracks the entire dependency chain, this
+> created a spurious gradient path that partially cancelled the legitimate one, and the osmotic
+> pressure came out artificially near zero. The fix is to evaluate at a fixed, decoupled point. It
+> is the kind of bug that surfaces neither as an exception nor as an absurd number — only as a
+> quietly wrong result.
+
+---
+
 ## Density profiles
 
 <div align="center">
@@ -507,6 +640,37 @@ amplitude — becomes **analytical**, and the network only has to learn an order
 | $\mu$ — $R^2$ in $\log_{10}$ | 0.98802 | **0.99979** |
 | $\phi$ — median L2 error | 18.0 % | **1.5 %** |
 | $\phi$ — error for $\mu > 10^4$ | 100 % (collapse) | **0.7–2.3 %** |
+
+---
+
+## Next stage: heterogeneous surfaces (in development)
+
+Everything above assumes a **uniformly** charged sphere. Real proteins are not like that — they
+carry positive and negative regions on the same surface, and the chain responds to that pattern,
+not just to the net charge.
+
+The project's second stage swaps the PINN for a **Fourier Neural Operator** and the radial
+potential for a multipole expansion (monopole, dipole, quadrupole…), solving in 2D:
+
+<div align="center">
+  <img src="images/fno_thermodynamics_smooth.png" width="100%" alt="FNO on a dipolar potential: potential, polymer cloud and non-local susceptibility">
+</div>
+
+Left, a dipolar potential: half the sphere attracts (blue), half repels (red). Center, where the
+polymer accumulates — note how it wraps around the repulsive side. Right, the **non-local
+susceptibility** $\delta\phi(\mathbf{r})/\delta V(\mathbf{r}_0)$: if you perturb the potential at
+the starred point, how the density responds across *all* the rest of space. Purple is depletion,
+green is accumulation.
+
+That last one is a functional derivative — a whole field's response to a point perturbation — and
+again it comes from automatic differentiation. Same idea as the previous section, now in two
+dimensions and without radial symmetry.
+
+> ⚠️ **This stage is not yet validated.** The current dataset (1,000 samples for a ~50-dimensional
+> parameter space) is too small for the model to distinguish multipole orders well, and training is
+> purely data-driven, with no PDE residual and no mass conservation. The figures above demonstrate
+> the method's **capability**, not a quantitative result. This stage's $\delta_c$ numbers are not
+> reportable, and are therefore not shown here.
 
 ---
 
